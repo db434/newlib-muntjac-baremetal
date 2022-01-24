@@ -1,56 +1,84 @@
-/* Copyright (c) 2017  SiFive Inc. All rights reserved.
+# Copyright lowRISC contributors.
+# Licensed under the Apache License, Version 2.0, see LICENSE for details.
+# SPDX-License-Identifier: Apache-2.0
 
-   This copyrighted material is made available to anyone wishing to use,
-   modify, copy, or redistribute it subject to the terms and conditions
-   of the FreeBSD License.   This program is distributed in the hope that
-   it will be useful, but WITHOUT ANY WARRANTY expressed or implied,
-   including the implied warranties of MERCHANTABILITY or FITNESS FOR
-   A PARTICULAR PURPOSE.  A copy of this license is available at
-   http://www.opensource.org/licenses.
-*/
+  .section .text.init
+  .align  6
+  .weak stvec_handler
+  .weak mtvec_handler
+  .globl _start
 
-#include "newlib.h"
-
-#=========================================================================
-# crt0.S : Entry point for RISC-V user programs
-#=========================================================================
-
-  .text
-  .global _start
-  .type   _start, @function
 _start:
-  # Initialize global pointer
-.option push
-.option norelax
-1:auipc gp, %pcrel_hi(__global_pointer$)
-  addi  gp, gp, %pcrel_lo(1b)
-.option pop
+  /* reset vector */
+  j reset_vector
+  .align 2
 
-  # Clear the bss segment
-  la      a0, __bss_start
-  la      a2, _end
-  sub     a2, a2, a0
-  li      a1, 0
-  call    memset
-#ifdef _LITE_EXIT
-  # Make reference to atexit weak to avoid unconditionally pulling in
-  # support code.  Refer to comments in __atexit.c for more details.
-  .weak   atexit
-  la      a0, atexit
-  beqz    a0, .Lweak_atexit
-  .weak   __libc_fini_array
-#endif
+reset_vector:
+  li x1, 0
+  li x2, 0
+  li x3, 0
+  li x4, 0
+  li x5, 0
+  li x6, 0
+  li x7, 0
+  li x8, 0
+  li x9, 0
+  li x10, 0
+  li x11, 0
+  li x12, 0
+  li x13, 0
+  li x14, 0
+  li x15, 0
+  li x16, 0
+  li x17, 0
+  li x18, 0
+  li x19, 0
+  li x20, 0
+  li x21, 0
+  li x22, 0
+  li x23, 0
+  li x24, 0
+  li x25, 0
+  li x26, 0
+  li x27, 0
+  li x28, 0
+  li x29, 0
+  li x30, 0
+  li x31, 0
 
-  la      a0, __libc_fini_array   # Register global termination functions
-  call    atexit                  #  to be called upon exit
-#ifdef _LITE_EXIT
-.Lweak_atexit:
-#endif
-  call    __libc_init_array       # Run global initialization functions
+  # Set up stack pointer and global pointer.
 
-  lw      a0, 0(sp)                  # a0 = argc
-  addi    a1, sp, __SIZEOF_POINTER__ # a1 = argv
-  li      a2, 0                      # a2 = envp = NULL
-  call    main
-  tail    exit
-  .size  _start, .-_start
+  # norelax:  the linker likes to use gp-relative addresses because it can often
+  #           generate them in 1 instruction instead of 2. This doesn't make
+  #           sense when initialising gp for the first time, so prevent it.
+  # push/pop: save and restore linker options so norelax doesn't affect other
+  #           sections unless it was already set.
+  .option push
+  .option norelax
+  la   x3, __global_pointer
+  .option pop
+
+  la   x2, __stack_start
+  # Set frame pointer here if necessary. x8 <= x2
+
+csr_init:
+  csrwi satp, 0
+  csrwi mie, 0
+  csrwi medeleg, 0
+  csrwi mideleg, 0
+  la x10, simple_exc_handler
+  csrw mtvec, x10
+
+  # Enable FPU if there is one
+  li a0, 0x6000
+  csrs mstatus, a0
+
+main_entry:
+  # Jump to main program entry point (argc = argv = 0)
+  addi x10, x0, 0
+  addi x11, x0, 0
+  jal x1, main
+
+  # Halt simulation
+  addi x10, x0, 0
+  j exit
